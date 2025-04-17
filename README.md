@@ -87,10 +87,9 @@ Suitable for all OS users, especially GNU/Linux users, requiring Python 3.10+ an
 Clone the repository and install dependencies, then run the application. 
 The commands are as follows:
 ```bash
+
 cd location of the file
-cd CLAP
 pip insall -r requirements.txt
-cd clap
-python src\CLAP\app.py
+python location of the file\app.py
 # Or briefcase dev
 ```
