@@ -1,9 +1,7 @@
-# CLAP: Chat Local And Persistent，网络隐私敏感场景下语境对话可加载设计实现的基于Ollama框架的本地大语言模型语义互动软件
-
+# DocuMind: Local Talk and Visualization，基于Langchain框架，集成本地大语言模型的语义互动软件，旨在实现网络隐私敏感场景下的语境对话，并提供可视化展示。
 ###### 版本号：1.0.0
-
 """
-Based on Ollama, a Graphical User Interface for Loc al Large Language Model Conversations.
+Semantic interaction software based on the Langchain framework, integrated with a local big language model, aims to enable contextual dialogues in privacy-sensitive scenarios on the web and provide visual presentations.
 """
 #权限检查
 import os
