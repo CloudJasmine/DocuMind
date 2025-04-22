@@ -22,6 +22,17 @@ pandas
 langchain
 # mammoth is a library for the Python programming language that converts .docx documents to HTML and Markdown.
 mammoth
+flask
+# jieba is a Chinese text segmentation tool.
+jieba
+# ltp is a toolkit for processing Chinese text, providing functionalities such as tokenization, part-of-speech tagging, named entity recognition, etc.
+ltp
+# spacy is an open-source library for advanced NLP in Python.
+spacy
+# wordcloud is a library for creating word clouds from text.
+wordcloud
+# janome is a Japanese morphological analyzer.
+janome
 # chromadb is for data storage and retrieval and may be replaced in the future.
 chromadb
 # langchain_community is a library for the Python programming language that provides a set of tools for working with natural language data.
