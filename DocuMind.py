@@ -2,7 +2,9 @@
 ###### 版本号：1.0.0
 """
 Semantic interaction software based on the Langchain framework, integrated with a local big language model, aims to enable contextual dialogues in privacy-sensitive scenarios on the web and provide visual presentations.
+
 """
+
 #权限检查
 import os
 os.environ["MPLBACKEND"] = "module://matplotlib.backends.backend_qtagg"
@@ -88,6 +90,7 @@ from matplotlib import collections
 from matplotlib.collections import LineCollection
 from matplotlib import rcParams
 from PIL import Image
+from pathlib import Path
 
 try:
     from importlib import metadata as importlib_metadata
@@ -4723,61 +4726,206 @@ class ChatLocalAndPersistent(QMainWindow):
         print('new chat')
         
     def openChat(self):
-        # 弹出文件对话框，获取保存文件的路径
-        path, _ = QFileDialog.getOpenFileName(self, 'Open Chat', 'clap', 'Clap Save Files (*.clap);;All Files (*)')
+        path, _ = QFileDialog.getOpenFileName(
+            self, 'Open Chat', '', 
+            'Clap Save Files (*.clap);;All Files (*)'
+        )
         
-        # 检查文件路径是否为空
-        if path != '':
-            # 以读取模式打开文件
+        if not path:
+            return
+
+        try:
             with open(path, 'rb') as f:
-                # 使用pickle模块加载字典
                 data = pickle.load(f)
-                # 将字典的内容赋值给相应的变量
-                # self.output_text_list = data['output_text_list']
-                self.show_text = data['show_text']
-                self.messages = data['messages']
-                self.model_selector.setCurrentText(data['model'])
-                self.role_selector.setCurrentText(data['role'])
-                try:
-                    self.path = data['path']
-                except:
-                    self.path = ''
                 
-                self.text_browser.setText(self.show_text) # 将文本添加到文本浏览器中
+            # 版本兼容处理
+            if data.get('version', 1.0) < 2.0:
+                self._migrate_old_format(data)
+                
+            # 恢复文档状态
+            self.doc_manager.loaded_paths = data['loaded_paths']
+            self.doc_manager.add_documents(data['loaded_paths'])  # 重新加载向量库
+            
+            # 恢复界面状态
+            self.active_links = data['active_links']
+            self.link_indicator.setText(f"已关联{len(self.active_links)}篇文档")
+            self._update_file_list_display(data.get('current_file', ''))
+            
+            # 恢复对话数据
+            self.messages = {
+                Path(k): v for k,v in data['messages'].items()  # 保持路径对象
+            }
+            
+            # 恢复问答历史
+            self._restore_qa_history(data['qa_history'])
+            
+            # 设置当前文件
+            if data['current_file']:
+                self._select_file_in_list(data['current_file'])
+                
+            QMessageBox.information(
+                self, "加载成功", 
+                f"已恢复 {len(data['loaded_paths'])} 个文档的会话状态"
+            )
+
+            # 恢复富文本内容
+            self.text_browser.setHtml(data['html_content'])
+            
+            # 恢复滚动位置（异步执行）
+            QTimer.singleShot(100, lambda: 
+                self.text_browser.verticalScrollBar().setValue(data['scroll_position'])
+            )
+            
+            # 恢复输入框内容
+            self.input_text_edit.setPlainText(data.get('current_input', ''))
+            
+            # 强制刷新界面
+            self.text_browser.repaint()
+            QApplication.processEvents()
+
+        except Exception as e:
+            QMessageBox.critical(
+                self, "加载失败", 
+                f"文件可能已损坏或不兼容\n错误信息：{str(e)}"
+            )
     
         # self.sendMessage()
     
     def saveChat(self):
-        # 弹出文件对话框，获取保存文件的路径
-        path, _ = QFileDialog.getSaveFileName(self, 'Save Chat', 'clap', 'Clap Save Files (*.clap);;All Files (*)')
+        path, _ = QFileDialog.getSaveFileName(
+            self, 'Save Chat', 'clap', 
+            'Clap Save Files (*.clap);;All Files (*)'
+        )
         
-        # 检查文件路径是否为空
-        if path != '':
-            # 以写入模式打开文件
+        if not path:
+            return
+
+        try:
+            # 新增：获取富文本内容
+            html_content = self.text_browser.toHtml()
+            
+            # 新增：获取滚动位置
+            scrollbar = self.text_browser.verticalScrollBar()
+            scroll_position = scrollbar.value()
+            # 获取所有必要数据
+            save_data = {
+                # 基础信息
+                'version': 2.0,
+                'model': self.model_selector.currentText(),
+                'role': self.role_selector.currentText(),
+                
+                # 文档数据
+                'loaded_paths': self.doc_manager.loaded_paths.copy(),
+                'active_links': self.active_links.copy(),
+                
+                # 对话数据（转换路径为字符串）
+                'messages': {
+                    str(k): v for k,v in self.messages.items()
+                },
+                
+                # 当前状态
+                'current_file': self.get_current_file_path(),
+                'qa_history': self._get_all_qa_history(),
+                'html_content': html_content,
+                'scroll_position': scroll_position,
+                # 当前输入框内容
+                'current_input': self.input_text_edit.toPlainText()
+            }
+
+            # 使用更安全的序列化方法
             with open(path, 'wb') as f:
-                # 创建一个字典，包含要保存的变量
-                data = {
-                    # 'output_text_list': self.output_text_list,
-                    'show_text': self.show_text,
-                    'messages': self.messages,
-                    'model' : self.model_selector.currentText(),
-                    'role' : self.role_selector.currentText(),
-                    'path': self.path
-                }
-                # 使用pickle模块保存字典
-                pickle.dump(data, f)
+                pickle.dump(save_data, f, protocol=pickle.HIGHEST_PROTOCOL)
+                
+            QMessageBox.information(
+                self, "保存成功", 
+                f"会话已保存到：\n{os.path.abspath(path)}"
+            )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self, "保存失败", 
+                f"错误信息：{str(e)}\n建议检查文件写入权限"
+            )
+
+    def _get_all_qa_history(self):
+        """获取所有文档的问答历史"""
+        history = {}
+        for path in self.doc_manager.loaded_paths:
+            history[str(path)] = self.doc_manager.get_questions_answers(path)
+        return history
+
+    def _restore_qa_history(self, history_data):
+        """恢复问答历史到数据库"""
+        for path_str, qa_list in history_data.items():
+            path = Path(path_str)
+            if path.exists():
+                self.doc_manager.set_questions_answers(path, qa_list)
+
+    def _select_file_in_list(self, target_path):
+        """在文件列表中选中指定路径"""
+        for i in range(self.file_list_widget.count()):
+            item = self.file_list_widget.item(i)
+            if item.data(Qt.UserRole) == str(target_path):
+                self.file_list_widget.setCurrentItem(item)
+                self.on_file_selected(item)
+                break
 
     def exportMarkdown(self):
         
         # 弹出文件对话框，获取保存文件的路径
         path, _ = QFileDialog.getSaveFileName(self, 'To Markdown', 'clap', 'Text Files (*.md);;All Files (*)')
         
-        # 获取输出框的文本
-        if (path != ''):
+        if not path:
+            return
+
+        try:
+            # 从数据库获取完整历史
+            current_file = self.get_current_file_path()
+            if not current_file:
+                QMessageBox.warning(self, "警告", "请先选择文档")
+                return
+
+            # 获取格式化历史记录
+            markdown_content = self._generate_markdown_content(current_file)
+
+            # 写入文件
             with open(path, 'w', encoding='utf-8') as f:
-                text_to_write = self.show_text
-                f.write(text_to_write + '\n')
-            print('save chat')
+                f.write(markdown_content)
+                
+            QMessageBox.information(self, "导出成功", 
+                f"已保存到：\n{os.path.abspath(path)}")
+
+        except Exception as e:
+            QMessageBox.critical(self, "导出失败", 
+                f"错误信息：\n{str(e)}")
+
+    def _generate_markdown_content(self, file_path):
+        """生成带格式的Markdown内容"""
+        # 从数据库获取历史记录
+        history = self.doc_manager.get_questions_answers(file_path)
+        
+        # 生成标题
+        content = f"# 对话历史 - {os.path.basename(file_path)}\n\n"
+        content += f"**文档路径**: `{file_path}`  \n"
+        content += f"**导出时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        
+        # 添加历史条目
+        for idx, qa in enumerate(history, 1):
+            content += f"## 对话记录 {idx}\n"
+            content += f"**时间**: {qa.get('timestamp', '未知')}\n\n"
+            content += f"### 问题\n{qa['question']}\n\n"
+            content += f"### 回答\n{qa['answer']}\n\n"
+            content += "---\n\n"  # 分隔线
+        
+        # 添加当前正在进行的对话
+        if self.messages.get(file_path):
+            current_qa = self.messages[file_path][-1]
+            content += "## 当前对话（未保存）\n"
+            content += f"**时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            content += f"### 问题\n{current_qa.get('content', '')}\n\n"
+            content += f"### 回答\n{self.text_browser.toPlainText()}\n"
+            
+        return content
     
     def display_qa(self, qa_list):
         self.output_text_edit.clear()
